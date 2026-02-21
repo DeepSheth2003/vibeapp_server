@@ -1,5 +1,6 @@
 const Chat = require("../models/chat.model");
 const User = require("../models/user.model");
+const Message = require("../models/message.model");
 
 exports.accessChat = async (req, res) => {
   const { userId } = req.body; // Samne wale user ki ID
@@ -49,14 +50,26 @@ exports.accessChat = async (req, res) => {
 
 exports.fetchChats = async (req, res) => {
   try {
-    const chats = await Chat.find({
+    let chats = await Chat.find({
       participants: { $elemMatch: { $eq: req.user.id } },
     })
-      .populate("participants", "username name")
+      .populate("participants", "username name isOnline lastSeen")
       .populate("latestMessage")
       .sort({ updatedAt: -1 });
 
-    res.status(200).json(chats);
+    // Har chat ke liye unread count calculate karein
+    const chatData = await Promise.all(
+      chats.map(async (chat) => {
+        const unreadCount = await Message.countDocuments({
+          chatId: chat._id,
+          sender: { $ne: req.user.id },
+          isRead: false,
+        });
+        return { ...chat._doc, unreadCount };
+      })
+    );
+
+    res.status(200).json(chatData);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
