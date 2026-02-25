@@ -22,7 +22,7 @@ const server = http.createServer(app); // Server setup for Socket.io
 const io = new Server(server, {
   pingTimeout: 60000,
   cors: {
-    origin: "http://localhost:5173", // Apne frontend ka URL yahan dalo
+    origin: process.env.FRONTEND_URL || "http://localhost:5173", // Apne frontend ka URL yahan dalo
     methods: ["GET", "POST"],
   },
 });
@@ -53,10 +53,13 @@ io.on("connection", (socket) => {
     // Update Online Status
     const User = require("./models/user.model"); // Ensure path is correct
     await User.findByIdAndUpdate(userData._id, { isOnline: true });
-    
+
     // Broadcast to others that I am online
-    socket.broadcast.emit("user status", { userId: userData._id, isOnline: true });
-    
+    socket.broadcast.emit("user status", {
+      userId: userData._id,
+      isOnline: true,
+    });
+
     socket.emit("connected");
   });
 
@@ -84,13 +87,16 @@ io.on("connection", (socket) => {
     if (socket.userId) {
       const User = require("./models/user.model");
       const lastSeen = new Date();
-      await User.findByIdAndUpdate(socket.userId, { isOnline: false, lastSeen });
-      
+      await User.findByIdAndUpdate(socket.userId, {
+        isOnline: false,
+        lastSeen,
+      });
+
       // Notify others I'm offline
-      socket.broadcast.emit("user status", { 
-        userId: socket.userId, 
-        isOnline: false, 
-        lastSeen 
+      socket.broadcast.emit("user status", {
+        userId: socket.userId,
+        isOnline: false,
+        lastSeen,
       });
     }
     console.log("USER DISCONNECTED ❌");

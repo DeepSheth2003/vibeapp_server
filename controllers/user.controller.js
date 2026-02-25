@@ -1,5 +1,6 @@
 const User = require("../models/user.model");
 const Notification = require("../models/notification.model");
+const bcrypt = require("bcryptjs");
 
 // 🔍 Search Users
 exports.searchUsers = async (req, res) => {
@@ -65,7 +66,7 @@ exports.acceptFollowRequest = async (req, res) => {
     }
 
     const requestExists = currentUser.followRequests.some(
-      (id) => id.toString() === requester._id.toString()
+      (id) => id.toString() === requester._id.toString(),
     );
 
     if (!requestExists) {
@@ -74,7 +75,7 @@ exports.acceptFollowRequest = async (req, res) => {
 
     // 🔥 Remove request
     currentUser.followRequests = currentUser.followRequests.filter(
-      (id) => id.toString() !== requester._id.toString()
+      (id) => id.toString() !== requester._id.toString(),
     );
 
     // 🔥 Add follower/following both sides
@@ -107,7 +108,7 @@ exports.rejectFollowRequest = async (req, res) => {
     const currentUser = await User.findById(req.user.id);
 
     const requestExists = currentUser.followRequests.some(
-      (id) => id.toString() === req.params.id
+      (id) => id.toString() === req.params.id,
     );
 
     if (!requestExists) {
@@ -115,7 +116,7 @@ exports.rejectFollowRequest = async (req, res) => {
     }
 
     currentUser.followRequests = currentUser.followRequests.filter(
-      (id) => id.toString() !== req.params.id
+      (id) => id.toString() !== req.params.id,
     );
 
     await currentUser.save();
@@ -135,5 +136,71 @@ exports.saveFcmToken = async (req, res) => {
     res.json({ message: "FCM token saved" });
   } catch (error) {
     res.status(500).json({ message: "Failed to save token" });
+  }
+};
+
+// 👤 Get User Profile
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .select("-password")
+      .populate("followers", "username name")
+      .populate("following", "username name");
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching profile" });
+  }
+};
+
+// ✏️ Update Profile (Name/Username)
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, username } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (username && username !== user.username) {
+      const existing = await User.findOne({ username });
+      if (existing) return res.status(400).json({ message: "Username taken" });
+    }
+
+    user.name = name || user.name;
+    user.username = username || user.username;
+    await user.save();
+    res.json({ message: "Profile updated", user });
+  } catch (error) {
+    res.status(500).json({ message: "Update failed" });
+  }
+};
+
+// 🔒 Change Password
+exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const user = await User.findById(req.user.id);
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch)
+      return res.status(400).json({ message: "Wrong current password" });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+    res.json({ message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Password update failed" });
+  }
+};
+
+exports.logoutUser = async (req, res) => {
+  try {
+    // User ko offline mark karein
+    await User.findByIdAndUpdate(req.user.id, {
+      isOnline: false,
+      lastSeen: new Date(),
+    });
+
+    res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Logout failed" });
   }
 };
